@@ -21,40 +21,30 @@ NCENTRALBINSMAIN = 640
 
 def main():    
 
-#    L_data = np.load('/scratch2/p/pen/hsiuhsil/psr_B1957+20/data_file/L_data.npy')
-#    R_data = np.load('/scratch2/p/pen/hsiuhsil/psr_B1957+20/data_file/R_data.npy')
+    if False: #reform the format of raw data
+        '''raw_data is in the shape of (pulse rotation, phase, pol)'''
+        raw_data = np.load('/scratch2/p/pen/hsiuhsil/psr_B1957+20/data_file/B1957pol3_512g_2014-06-15T07:06:23.00000+536s.npy')
+        '''Separate raw__data into L, R pols, which in the shape of ((pulse rotation, phase, L/R pol))'''
+        data = np.sum(raw_data.reshape(raw_data.shape[0], raw_data.shape[1], 3,2), axis=2)
+        L_data = data[:,:,0] - np.mean(data[:,:,0], axis=0)
+        R_data = data[:,:,1] - np.mean(data[:,:,1], axis=0)
+        B_data = np.concatenate((L_data, R_data), axis=1) # B means both of L and R
+        np.save('B_data.npy', B_data)
+
     B_data = np.load('/scratch2/p/pen/hsiuhsil/psr_B1957+20/data_file/B_data.npy')
-#    B_data_rebin = np.load('/scratch2/p/pen/hsiuhsil/psr_B1957+20/data_file/B_data_rebin_t10.npy') 
-    B_rebin_V_t10 = np.load('/scratch2/p/pen/hsiuhsil/psr_B1957+20/data_file/B_rebin_V_t10.npy')
-#    V = B_rebin_V_t10
-    if False:
-        V[1:, 0:150] = 0
-        V[1:, 290:400] = 0
-        V[1:, 500:680] = 0
-        V[1:, 780:900] = 0
-        V[1:, 1000:] = 0
-
-#    V_fft = fftpack.fft(V, axis=1)
-
-
+    if True: # Stack the pulse profiles
+        profile_stack = 50
+        B_data_stack = stack(B_data, profile_stack)
+        print 'B_data_stack.shape: ', B_data_stack.shape
+        
     if True:
-        rebin_pulse = 100
+        rebin_pulse = 1
         filename = 'B_data_rebin_' + str(rebin_pulse)
         B_data_rebin = rebin_spec(B_data, rebin_pulse, 1)
         np.save(filename + '.npy', B_data_rebin)
         print 'B_data_rebin.shape', B_data_rebin.shape
 #        svd(B_data_rebin, rebin_pulse)
         plot_svd(B_data_rebin, rebin_pulse, filename)
-
-    if False:
-        '''raw_data is in the shape of (pulse rotation, phase, pol)'''
-        raw_data = np.load('/scratch2/p/pen/hsiuhsil/psr_B1957+20/data_file/B1957pol3_512g_2014-06-15T07:06:23.00000+536s.npy')
-
-        '''Separate raw__data into L, R pols, which in the shape of ((pulse rotation, phase, L/R pol))'''
-        data = np.sum(raw_data.reshape(raw_data.shape[0], raw_data.shape[1], 3,2), axis=2)
-        L_data = data[:,:,0] - np.mean(data[:,:,0])
-        R_data = data[:,:,1] - np.mean(data[:,:,1])
-        B_data = np.concatenate((L_data, R_data), axis=1) # B means both of L and R
 
     if False:
         '''The origin V modes of L, R, and B.'''
@@ -182,6 +172,14 @@ def phase_fitting(profiles, V):
             phase_errors_lik.append(std)
             profile_numbers_lik.append(ii)
             plot_phase_diff_chi2(phase_diff_samples, likelihood, norm, ii)
+
+def stack(profile, profile_stack):
+    nprof = len(profile)
+    nprof -= nprof % profile_stack
+    profile = profile[:nprof].reshape(nprof // profile_stack, profile_stack, profile.shape[-1])
+    profile = np.mean(profile, 1)
+    return profile
+
 
 def residuals(parameters, profile_fft, V_fft):
     return pick_harmonics(profile_fft) - model(parameters, V_fft)
