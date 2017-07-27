@@ -41,7 +41,7 @@ def main():
         B_data_stack = stack(B_data, profile_stack)
         print 'B_data_stack.shape: ', B_data_stack.shape
         
-    if True:
+    if False:
         rebin_pulse = 1
         filename = 'B_data_rebin_' + str(rebin_pulse)
         B_data_rebin = B_data_stack#rebin_spec(B_data, rebin_pulse, 1)
@@ -50,14 +50,34 @@ def main():
 #        svd(B_data_rebin, rebin_pulse)
         plot_svd(B_data_rebin, rebin_pulse, filename)
 
-    if False:
-        '''The origin V modes of L, R, and B.'''
-        V_L = np.load('/scratch2/p/pen/hsiuhsil/psr_B1957+20/data_file/L_pol_full_V.npy')
-        V_R = np.load('/scratch2/p/pen/hsiuhsil/psr_B1957+20/data_file/R_pol_full_V.npy')
-        V_B = np.load('/scratch2/p/pen/hsiuhsil/psr_B1957+20/data_file/B_pol_full_V.npy')
+    if True: # check noise of L and R
+        U, s, V = svd(B_data_stack)
+        V[0] = 0
+        V[1] = 0
+        check_noise(V)
 
-    if False: 
-        phase_fitting(B_data_rebin, V)
+def check_noise(V):
+
+    var_L = np.zeros((V.shape[0]))
+    var_R = np.zeros((V.shape[0]))
+    for ii in xrange(V.shape[0]):
+        var_L[ii] = np.var(V[ii, 0:V.shape[1]/2])
+        var_R[ii] = np.var(V[ii, V.shape[1]/2:V.shape[1]])
+
+    fontsize = 16
+
+    plt.close('all')
+    plt.figure()
+    x_range = np.arange(0 , len(var_L))
+    plt.plot(x_range, var_L, 'r-',linewidth=2.5)
+    plt.plot(x_range, var_R, 'b--',linewidth=2.5)
+    plt.xlim((2, 100))
+    plt.xlabel('profile numbers', fontsize=fontsize)
+    plt.ylabel('Variance', fontsize=fontsize)
+#    plt.legend(loc=1)
+    plt.tick_params(axis='both', which='major', labelsize=fontsize)
+    plt.savefig('variance_rl.png', bbox_inches='tight')
+
 
 def phase_fitting(profiles, V):
     profile_numbers = []
@@ -245,7 +265,7 @@ def fft_phase_curve_inverse(parameters, profile_fft):
     fft_model = parameters[1] * np.exp(-1.0j * 2 * np.pi * freq * ( n - parameters[0])) * profile_fft
     return fft_model
 
-def svd(file, rebin_pulse):
+def svd(file):
 
     time_matrix = np.zeros(file.shape)
     for ii in xrange(len(time_matrix)):
@@ -257,9 +277,9 @@ def svd(file, rebin_pulse):
         V[0] = -V[0]
 
     if True:
-        np.save('B_rebin_U_'+str(rebin_pulse)+'.npy', U)
-        np.save('B_rebin_s_'+str(rebin_pulse)+'.npy', s)
-        np.save('B_rebin_V_'+str(rebin_pulse)+'.npy', V)
+        np.save('B_U_.npy', U)
+        np.save('B_s_.npy', s)
+        np.save('B_V_.npy', V)
 
     return U, s, V
 
