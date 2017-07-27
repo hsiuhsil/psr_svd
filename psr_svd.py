@@ -26,10 +26,14 @@ def main():
         raw_data = np.load('/scratch2/p/pen/hsiuhsil/psr_B1957+20/data_file/B1957pol3_512g_2014-06-15T07:06:23.00000+536s.npy')
         '''Separate raw__data into L, R pols, which in the shape of ((pulse rotation, phase, L/R pol))'''
         data = np.sum(raw_data.reshape(raw_data.shape[0], raw_data.shape[1], 3,2), axis=2)
-        L_data = data[:,:,0] - np.mean(data[:,:,0], axis=0)
-        R_data = data[:,:,1] - np.mean(data[:,:,1], axis=0)
+        L_data = np.zeros((data[:,:,0].shape))
+        R_data = np.zeros((data[:,:,1].shape))
+        for ii in xrange(len(L_data)):
+            L_data[ii] = data[ii,:,0] - np.mean(data[ii,:,0])
+            R_data[ii] = data[ii,:,1] - np.mean(data[ii,:,1])
         B_data = np.concatenate((L_data, R_data), axis=1) # B means both of L and R
         np.save('B_data.npy', B_data)
+        print 'save B_data'
 
     B_data = np.load('/scratch2/p/pen/hsiuhsil/psr_B1957+20/data_file/B_data.npy')
     if True: # Stack the pulse profiles
@@ -40,7 +44,7 @@ def main():
     if True:
         rebin_pulse = 1
         filename = 'B_data_rebin_' + str(rebin_pulse)
-        B_data_rebin = rebin_spec(B_data, rebin_pulse, 1)
+        B_data_rebin = B_data_stack#rebin_spec(B_data, rebin_pulse, 1)
         np.save(filename + '.npy', B_data_rebin)
         print 'B_data_rebin.shape', B_data_rebin.shape
 #        svd(B_data_rebin, rebin_pulse)
