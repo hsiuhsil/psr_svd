@@ -54,27 +54,32 @@ def main():
         U, s, V = svd(B_data_stack)
         V[0] = 0
         V[1] = 0
-        check_noise(V)
+#        print 'U.shape',U.shape
+#        print 's.shape',s.shape
+#        print 'V.shape',V.shape
+        profile_recon = np.dot(U, np.dot(np.diag(s), V))
+#        print 'profile_recon.shape', profile_recon.shape
+        check_noise(profile_recon)
 
-def check_noise(V):
+def check_noise(profile):
 
-    var_L = np.zeros((V.shape[0]))
-    var_R = np.zeros((V.shape[0]))
-    for ii in xrange(V.shape[0]):
-        var_L[ii] = np.var(V[ii, 0:V.shape[1]/2])
-        var_R[ii] = np.var(V[ii, V.shape[1]/2:V.shape[1]])
+    var_L = np.zeros((profile.shape[0]))
+    var_R = np.zeros((profile.shape[0]))
+    for ii in xrange(profile.shape[0]):
+        var_L[ii] = np.var(profile[ii, 0:profile.shape[1]/2])
+        var_R[ii] = np.var(profile[ii, profile.shape[1]/2:profile.shape[1]])
 
     fontsize = 16
 
     plt.close('all')
     plt.figure()
     x_range = np.arange(0 , len(var_L))
-    plt.plot(x_range, var_L, 'r-',linewidth=2.5)
-    plt.plot(x_range, var_R, 'b--',linewidth=2.5)
-    plt.xlim((2, 100))
+    plt.plot(x_range, var_L, 'ro', linewidth=2.5, label='var_L')
+    plt.plot(x_range, var_R, 'bs', linewidth=2.5, label='var_R')
+    plt.xlim((0, len(var_L)))
     plt.xlabel('profile numbers', fontsize=fontsize)
     plt.ylabel('Variance', fontsize=fontsize)
-#    plt.legend(loc=1)
+    plt.legend(loc='upper right', fontsize=fontsize)
     plt.tick_params(axis='both', which='major', labelsize=fontsize)
     plt.savefig('variance_rl.png', bbox_inches='tight')
 
