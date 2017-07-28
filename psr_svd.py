@@ -57,9 +57,30 @@ def main():
 #        print 'U.shape',U.shape
 #        print 's.shape',s.shape
 #        print 'V.shape',V.shape
-        profile_recon = np.dot(U, np.dot(np.diag(s), V))
-#        print 'profile_recon.shape', profile_recon.shape
-        check_noise(profile_recon)
+        profile_recon = reconstruct_profile(U,s,V)
+        print 'profile_recon.shape', profile_recon.shape
+        # transform array into unit variance.
+        profile_norm_var_L = np.zeros((profile_recon.shape[0], profile_recon.shape[1]/2))
+        profile_norm_var_R = np.zeros((profile_recon.shape[0], profile_recon.shape[1]/2))
+        for ii in xrange(profile_recon.shape[0]):
+            profile_norm_var_L[ii] = norm_variace_profile(profile_recon[ii, 0:profile_recon.shape[1]/2])
+            profile_norm_var_R[ii] = norm_variace_profile(profile_recon[ii, profile_recon.shape[1]/2:profile_recon.shape[1]])
+        profile_norm_var = np.concatenate((profile_norm_var_L, profile_norm_var_R), axis=1)
+        print 'finish profile_norm_var'
+        # SVD on the normalized variance profile.
+        plot_svd(profile_norm_var, 'profile_norm_var_')
+        print 'finish SVD'
+        check_noise(profile_norm_var)
+
+def reconstruct_profile(U,s,V):
+    '''reconstruct a profile using U, s, and V.'''
+    profile_recon = np.dot(U, np.dot(np.diag(s), V))
+    return profile_recon 
+
+def norm_variace_profile(profile):
+    '''transform an array into the array with zero mean and unit variance.'''
+    profile_norm_var = (profile - np.mean(profile)) / np.sqrt(np.var(profile))
+    return profile_norm_var
 
 def check_noise(profile):
 
@@ -69,14 +90,18 @@ def check_noise(profile):
         var_L[ii] = np.var(profile[ii, 0:profile.shape[1]/2])
         var_R[ii] = np.var(profile[ii, profile.shape[1]/2:profile.shape[1]])
 
+    rebin_factor = 100
+    rebin_var_L = rebin_array(var_L, rebin_factor)
+    rebin_var_R = rebin_array(var_R, rebin_factor)
+
     fontsize = 16
 
     plt.close('all')
     plt.figure()
-    x_range = np.arange(0 , len(var_L))
-    plt.plot(x_range, var_L, 'ro', linewidth=2.5, label='var_L')
-    plt.plot(x_range, var_R, 'bs', linewidth=2.5, label='var_R')
-    plt.xlim((0, len(var_L)))
+    x_range = np.arange(0 , len(rebin_var_L))
+    plt.plot(x_range, rebin_var_L, 'ro', linewidth=2.5, label='rebin_var_L')
+    plt.plot(x_range, rebin_var_R, 'bs', linewidth=2.5, label='rebin_var_R')
+    plt.xlim((0, len(rebin_var_L)))
     plt.xlabel('profile numbers', fontsize=fontsize)
     plt.ylabel('Variance', fontsize=fontsize)
     plt.legend(loc='upper right', fontsize=fontsize)
@@ -244,6 +269,13 @@ def apply_phase_shift(profile_fft, phase_bins_shift):
     freq = fftpack.fftfreq(n, 1./n)
     phase = np.exp(-2j * np.pi * phase_shift * freq)
     return profile_fft * phase
+
+def rebin_array(input_data, rebin_factor):
+    xlen = input_data.shape[0] / rebin_factor
+    output_data = np.zeros((xlen,))
+    for ii in range(xlen):
+        output_data[ii]=input_data[ii*rebin_factor:(ii+1)*rebin_factor].mean()
+    return output_data
     
 def rebin_spec(input_data, rebin_factor_0, rebin_factor_1):
     xlen = input_data.shape[0] / rebin_factor_0
@@ -306,9 +338,9 @@ def plot_spec():
     plt.savefig('B_data_31597.png', bbox_inches='tight')
 
 
-def plot_svd(file, rebin_pulse, plot_name):
+def plot_svd(file, plot_name):
 
-    U, s, V= svd(file, rebin_pulse)
+    U, s, V= svd(file)
 
     V_name = plot_name + '_V.npy'
     np.save(V_name, V)
