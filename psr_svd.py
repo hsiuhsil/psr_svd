@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 import math
 from scipy import fftpack, optimize, interpolate, linalg, integrate
+import copy
 
 NHARMONIC = 640 
 NMODES = 2
@@ -52,8 +53,11 @@ def main():
 
     if True: # check noise of L and R
         U, s, V = svd(B_data_stack)
+        V0_raw = copy.deepcopy(V[0])
+        V1_raw = copy.deepcopy(V[1])
         V[0] = 0
         V[1] = 0
+        print 'V0_raw', V0_raw
 #        print 'U.shape',U.shape
 #        print 's.shape',s.shape
 #        print 'V.shape',V.shape
@@ -62,24 +66,53 @@ def main():
         # transform array into unit variance.
         profile_norm_var_L = np.zeros((profile_recon.shape[0], profile_recon.shape[1]/2))
         profile_norm_var_R = np.zeros((profile_recon.shape[0], profile_recon.shape[1]/2))
+        var_profile_recon_L = np.var(profile_recon[:, 0:profile_recon.shape[1]/2])
+        var_profile_recon_R = np.var(profile_recon[:, profile_recon.shape[1]/2:profile_recon.shape[1]])
+        var_profile_recon = np.var(profile_recon)
+
         for ii in xrange(profile_recon.shape[0]):
-            profile_norm_var_L[ii] = norm_variace_profile(profile_recon[ii, 0:profile_recon.shape[1]/2])
-            profile_norm_var_R[ii] = norm_variace_profile(profile_recon[ii, profile_recon.shape[1]/2:profile_recon.shape[1]])
+            profile_norm_var_L[ii] = norm_variace_profile(profile_recon[ii, 0:profile_recon.shape[1]/2], var_profile_recon_L)
+            profile_norm_var_R[ii] = norm_variace_profile(profile_recon[ii, profile_recon.shape[1]/2:profile_recon.shape[1]], var_profile_recon_R)
         profile_norm_var = np.concatenate((profile_norm_var_L, profile_norm_var_R), axis=1)
         print 'finish profile_norm_var'
         # SVD on the normalized variance profile.
-        plot_svd(profile_norm_var, 'profile_norm_var_')
+        U, s, V = svd(profile_norm_var)
+#        plot_svd(profile_norm_var, 'profile_norm_var_')
         print 'finish SVD'
         check_noise(profile_norm_var)
+        V_recon = reconstruct_V(V, V0_raw, V1_raw)
+        phase_fitting(B_data_stack, V_recon)
+
+
+def reconstruct_V(V, V0_raw, V1_raw):
+    '''reconstruct V modes by adding raw V0 and V1 to the V modes created without raw V0 and V1'''
+    V[0] += V0_raw
+    V[1] += V1_raw
+
+    fontsize = 16
+    plt.close('all')
+    plt.figure()
+    n_step = -0.3
+    x_range = np.arange(0 , len(V[0]))
+    color = ['r', 'g', 'b', 'y', 'c', '0.0', '0.2', '0.4', '0.6', '0.8']
+    for ii in xrange(len(color)):
+        plt.plot(x_range, np.roll(V[ii] + ii *n_step, 0), color[ii], linewidth=1.0)
+    plt.xlim((0, len(V[0])))
+    plt.ylabel('V values', fontsize=fontsize)
+    plt.tick_params(axis='both', which='major', labelsize=fontsize)
+    plot_name_V = 'recon_V.png'
+    plt.savefig(plot_name_V, bbox_inches='tight')
+
+    return V
 
 def reconstruct_profile(U,s,V):
     '''reconstruct a profile using U, s, and V.'''
     profile_recon = np.dot(U, np.dot(np.diag(s), V))
     return profile_recon 
 
-def norm_variace_profile(profile):
+def norm_variace_profile(profile, variance):
     '''transform an array into the array with zero mean and unit variance.'''
-    profile_norm_var = (profile - np.mean(profile)) / np.sqrt(np.var(profile))
+    profile_norm_var = (profile - np.mean(profile)) / np.sqrt(variance)
     return profile_norm_var
 
 def check_noise(profile):
@@ -123,7 +156,7 @@ def phase_fitting(profiles, V):
     profiles = profiles[:nprof]
 #    profiles = np.mean(profiles, 1)
     V_fft = fftpack.fft(V, axis=1)
-    for ii, profile in list(enumerate(profiles))[3159:3160]:
+    for ii, profile in list(enumerate(profiles))[0:30]:
         print "Profile: ", ii
         profile_numbers.append(ii)
         profile_fft = fftpack.fft(profile)
@@ -426,6 +459,7 @@ def plot_phase_fft(data_fft, model_fft, ii):
     plot_name = 'phase_fit_'
     plot_name += str(ii) + '_'
     fontsize = 16
+    markersize = 4
 
     '''Plot for real and imag parts in the Fourier space.'''
     plt.close('all')
@@ -434,26 +468,26 @@ def plot_phase_fft(data_fft, model_fft, ii):
     mode_range = np.linspace(-len(freq)/2, len(freq)/2, num=len(freq), endpoint=True)
     print 'len(freq)', len(freq)
     xmax = np.amax(mode_range)
-    xmin = np.amin(mode_range)
-    ax1.plot(mode_range, np.roll(model_fft_real, -int(len(freq)/2)),'r-')
-    ax1.plot(mode_range, np.roll(data_fft_real, -int(len(freq)/2)),'b-')
+    xmin = np.amin(mode_range)   
+    ax1.plot(mode_range, np.roll(data_fft_real, -int(len(freq)/2)),'bo', markersize=markersize)
+    ax1.plot(mode_range, np.roll(model_fft_real, -int(len(freq)/2)),'r-', markersize=markersize)
     ax1.set_title('Real', size=fontsize)
     ax1.set_xlim([xmin,xmax])
     ax1.tick_params(axis='both', which='major', labelsize=fontsize)
 
-    ax2.plot(mode_range, np.roll(model_fft_imag, -int(len(freq)/2)),'r-')
-    ax2.plot(mode_range, np.roll(data_fft_imag, -int(len(freq)/2)),'b-')
+    ax2.plot(mode_range, np.roll(data_fft_imag, -int(len(freq)/2)),'bo', markersize=markersize)
+    ax2.plot(mode_range, np.roll(model_fft_imag, -int(len(freq)/2)),'r-', markersize=markersize)
     ax2.set_title('Imag', size=fontsize)
     ax2.set_xlim([xmin,xmax])
     ax2.tick_params(axis='both', which='major', labelsize=fontsize)
 
-    ax3.plot(mode_range, np.roll(res_fft_real, -int(len(freq)/2)),'bo')
+    ax3.plot(mode_range, np.roll(res_fft_real, -int(len(freq)/2)),'gs', markersize=markersize)
     ax3.set_xlabel('Harmonic modes', fontsize=fontsize)
     ax3.set_ylabel('Residuals (T/Tsys)', fontsize=fontsize)
     ax3.set_xlim([xmin,xmax])
     ax3.tick_params(axis='both', which='major', labelsize=fontsize)
 
-    ax4.plot(mode_range, np.roll(res_fft_imag, -int(len(freq)/2)),'bo')
+    ax4.plot(mode_range, np.roll(res_fft_imag, -int(len(freq)/2)),'gs', markersize=markersize)
     ax4.set_xlabel('Harmonic modes', fontsize=fontsize)
     ax4.set_xlim([xmin,xmax])
     ax4.tick_params(axis='both', which='major', labelsize=fontsize)
@@ -475,6 +509,7 @@ def plot_phase_ifft(pars_fit, data, V_fft, ii):
     plot_name = 'phase_fit_'
     plot_name += str(ii) + '_'
     fontsize = 16
+    markersize = 4
 
     plt.close('all')
     f, ((ax1, ax2)) = plt.subplots(2, 1, sharex='col', figsize=(8,9))
@@ -482,12 +517,12 @@ def plot_phase_ifft(pars_fit, data, V_fft, ii):
     phase_bins_range = np.linspace(0, len(data), num=len(data), endpoint=True)
     xmax = np.amax(phase_bins_range)
     xmin = np.amin(phase_bins_range)
-    ax1.plot(phase_bins_range, model_ifft,'r-')
-    ax1.plot(phase_bins_range, data_ifft,'b-')
+    ax1.plot(phase_bins_range, data_ifft,'bo', markersize=markersize)
+    ax1.plot(phase_bins_range, model_ifft,'r-', markersize=markersize)
     ax1.set_xlim([xmin,xmax])
     ax1.set_ylabel('T/Tsys', fontsize=fontsize)
     ax1.tick_params(axis='both', which='major', labelsize=fontsize)
-    ax2.plot(phase_bins_range, res_ifft,'bo')
+    ax2.plot(phase_bins_range, res_ifft,'gs', markersize=markersize)
     ax2.set_xlim([xmin,xmax])
     ax2.set_xlabel('Phase Bins', fontsize=fontsize)
     ax2.set_ylabel('Residuals (T/Tsys)', fontsize=fontsize)
