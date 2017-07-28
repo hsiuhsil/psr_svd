@@ -12,7 +12,7 @@ from scipy import fftpack, optimize, interpolate, linalg, integrate
 import copy
 
 NHARMONIC = 640 
-NMODES = 2
+NMODES = 3
 
 NPHASEBIN = 640
 NCENTRALBINS = 640
@@ -51,37 +51,42 @@ def main():
 #        svd(B_data_rebin, rebin_pulse)
         plot_svd(B_data_rebin, rebin_pulse, filename)
 
-    if True: # check noise of L and R
-        U, s, V = svd(B_data_stack)
+    if True: 
+        '''Reconstruct V modes'''
+        profile = B_data_stack
+        var_profile_L = np.var(profile[:, 0:profile.shape[1]/2])
+        var_profile_R = np.var(profile[:, profile.shape[1]/2:profile.shape[1]])
+
+        U, s, V = svd(profile)
         V0_raw = copy.deepcopy(V[0])
         V1_raw = copy.deepcopy(V[1])
         V[0] = 0
         V[1] = 0
-        print 'V0_raw', V0_raw
-#        print 'U.shape',U.shape
-#        print 's.shape',s.shape
-#        print 'V.shape',V.shape
+
         profile_recon = reconstruct_profile(U,s,V)
         print 'profile_recon.shape', profile_recon.shape
         # transform array into unit variance.
         profile_norm_var_L = np.zeros((profile_recon.shape[0], profile_recon.shape[1]/2))
         profile_norm_var_R = np.zeros((profile_recon.shape[0], profile_recon.shape[1]/2))
-        var_profile_recon_L = np.var(profile_recon[:, 0:profile_recon.shape[1]/2])
-        var_profile_recon_R = np.var(profile_recon[:, profile_recon.shape[1]/2:profile_recon.shape[1]])
-        var_profile_recon = np.var(profile_recon)
 
         for ii in xrange(profile_recon.shape[0]):
-            profile_norm_var_L[ii] = norm_variace_profile(profile_recon[ii, 0:profile_recon.shape[1]/2], var_profile_recon_L)
-            profile_norm_var_R[ii] = norm_variace_profile(profile_recon[ii, profile_recon.shape[1]/2:profile_recon.shape[1]], var_profile_recon_R)
+            profile_norm_var_L[ii] = norm_variace_profile(profile_recon[ii, 0:profile_recon.shape[1]/2], var_profile_L)
+            profile_norm_var_R[ii] = norm_variace_profile(profile_recon[ii, profile_recon.shape[1]/2:profile_recon.shape[1]], var_profile_R)
         profile_norm_var = np.concatenate((profile_norm_var_L, profile_norm_var_R), axis=1)
         print 'finish profile_norm_var'
         # SVD on the normalized variance profile.
         U, s, V = svd(profile_norm_var)
-#        plot_svd(profile_norm_var, 'profile_norm_var_')
         print 'finish SVD'
         check_noise(profile_norm_var)
-        V_recon = reconstruct_V(V, V0_raw, V1_raw)
-        phase_fitting(B_data_stack, V_recon)
+        V_recon, V_recon_intensity= reconstruct_V(V, V0_raw, V1_raw)
+        # create V modes for intensity       
+
+        '''reconstruct profiles of Intensity, using I = L**2 + R**2'''
+        profile_L = profile[:, 0:profile.shape[1]/2]
+        profile_R = profile[:, profile.shape[1]/2:profile.shape[1]]     
+        intensity = profile_L**2 + profile_R**2
+
+        phase_fitting(intensity, V_recon_intensity)
 
 
 def reconstruct_V(V, V0_raw, V1_raw):
@@ -89,6 +94,17 @@ def reconstruct_V(V, V0_raw, V1_raw):
     V[0] += V0_raw
     V[1] += V1_raw
 
+    # create V_intensity from V_L**2 + V_R**2
+    V_L = V[:, 0: V.shape[1]/2]
+    V_R = V[:, V.shape[1]/2:V.shape[1]]
+    V_I = V_L**2 + V_R**2
+
+    plot_V(V, 'recon_V.png')
+    plot_V(V_I, 'recon_V_I.png')
+    return V, V_I
+
+def plot_V(V, plot_name_V): 
+    '''plot V modes'''
     fontsize = 16
     plt.close('all')
     plt.figure()
@@ -100,10 +116,8 @@ def reconstruct_V(V, V0_raw, V1_raw):
     plt.xlim((0, len(V[0])))
     plt.ylabel('V values', fontsize=fontsize)
     plt.tick_params(axis='both', which='major', labelsize=fontsize)
-    plot_name_V = 'recon_V.png'
+#    plot_name_V = 'recon_V.png'
     plt.savefig(plot_name_V, bbox_inches='tight')
-
-    return V
 
 def reconstruct_profile(U,s,V):
     '''reconstruct a profile using U, s, and V.'''
@@ -156,7 +170,7 @@ def phase_fitting(profiles, V):
     profiles = profiles[:nprof]
 #    profiles = np.mean(profiles, 1)
     V_fft = fftpack.fft(V, axis=1)
-    for ii, profile in list(enumerate(profiles))[0:30]:
+    for ii, profile in list(enumerate(profiles))[0:2]:
         print "Profile: ", ii
         profile_numbers.append(ii)
         profile_fft = fftpack.fft(profile)
