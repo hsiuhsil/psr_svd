@@ -14,9 +14,9 @@ import copy
 NHARMONIC = 640 
 NMODES = 3
 
-NPHASEBIN = 640
-NCENTRALBINS = 640
-NCENTRALBINSMAIN = 640
+NPHASEBIN = 512
+NCENTRALBINS = 512
+NCENTRALBINSMAIN = 512
 
 #plot_name = 'U_fit_'
 
@@ -78,15 +78,12 @@ def main():
         U, s, V = svd(profile_norm_var)
         print 'finish SVD'
         check_noise(profile_norm_var)
-        V_recon, V_recon_intensity= reconstruct_V(V, V0_raw, V1_raw)
-        # create V modes for intensity       
+        V_recon = reconstruct_V(V, V0_raw, V1_raw)       
 
-        '''reconstruct profiles of Intensity, using I = L**2 + R**2'''
-        profile_L = profile[:, 0:profile.shape[1]/2]
-        profile_R = profile[:, profile.shape[1]/2:profile.shape[1]]     
-        intensity = profile_L**2 + profile_R**2
+        '''reshape profiles of L and R into periodic signals (pulse number, L/R, phases)'''
+        profile = profile.reshape(profile.shape[0], 2, profile.shape[1]/2)        
 
-        phase_fitting(intensity, V_recon_intensity)
+        phase_fitting(profile, V_recon)
 
 
 def reconstruct_V(V, V0_raw, V1_raw):
@@ -94,14 +91,16 @@ def reconstruct_V(V, V0_raw, V1_raw):
     V[0] += V0_raw
     V[1] += V1_raw
 
-    # create V_intensity from V_L**2 + V_R**2
+    # check V_L and V_R
     V_L = V[:, 0: V.shape[1]/2]
     V_R = V[:, V.shape[1]/2:V.shape[1]]
-    V_I = V_L**2 + V_R**2
+    plot_V(V_L, 'recon_V_L.png')
+    plot_V(V_R, 'recon_V_R.png')
 
-    plot_V(V, 'recon_V.png')
-    plot_V(V_I, 'recon_V_I.png')
-    return V, V_I
+    # reshape V into (mode numbers, L/R, phases)
+    V_recon = V.reshape(V.shape[0], 2, V.shape[1]/2)
+
+    return V_recon
 
 def plot_V(V, plot_name_V): 
     '''plot V modes'''
@@ -170,10 +169,18 @@ def phase_fitting(profiles, V):
     profiles = profiles[:nprof]
 #    profiles = np.mean(profiles, 1)
     V_fft = fftpack.fft(V, axis=1)
-    for ii, profile in list(enumerate(profiles))[0:2]:
+    V_fft_L = fftpack.fft(V[:,0,:], axis=1)
+    V_fft_R = fftpack.fft(V[:,1,:], axis=1)
+
+    for ii, profile in list(enumerate(profiles))[1:2]:
         print "Profile: ", ii
         profile_numbers.append(ii)
+        profile_L = profile[0]
+        profile_R = profile[1]
+
         profile_fft = fftpack.fft(profile)
+        profile_fft_L = fftpack.fft(profile_L)
+        profile_fft_R = fftpack.fft(profile_R)
 
         phase_init = 0
         phase_model.append(phase_init)
@@ -207,11 +214,14 @@ def phase_fitting(profiles, V):
         phases.append(pars_fit[0])
         phase_errors.append(errs[0])
 
-        model_fft = model(pars_fit, V_fft) 
-        print 'model_fft.shape', model_fft.shape
-        print 'profile_fft.shape', profile_fft.shape
-        plot_phase_fft(pick_harmonics(profile_fft), model_fft, ii)
-        plot_phase_ifft(pars_fit, profile, V_fft, ii)
+        model_fft_L = model(pars_fit, V_fft_L) 
+        model_fft_R = model(pars_fit, V_fft_R)
+        print 'model_fft_L.shape', model_fft_L.shape
+        print 'profile_fft_L.shape', profile_fft_L.shape
+        plot_phase_fft(pick_harmonics(profile_fft_L), model_fft_L, ii, 'phase_fit_L_')
+        plot_phase_ifft(pars_fit, profile_L, V_fft_L, ii, 'phase_fit_L_')
+        plot_phase_fft(pick_harmonics(profile_fft_R), model_fft_R, ii, 'phase_fit_R_')
+        plot_phase_ifft(pars_fit, profile_R, V_fft_R, ii, 'phase_fit_R_')
 
         if True:
             # Fix phase at set values, then fit for amplitudes. Then integrate
@@ -223,8 +233,16 @@ def phase_fitting(profiles, V):
                 this_phase = p + pars_init[0]
                 if True:
                     # Linear fit.
-                    P = shift_trunc_modes(this_phase, V_fft)
-                    d = pick_harmonics(profile_fft)
+#                    P = shift_trunc_modes(this_phase, V_fft)
+#                    d = pick_harmonics(profile_fft)
+                    P_L = shift_trunc_modes(this_phase, V_fft_L)
+                    P_R = shift_trunc_modes(this_phase, V_fft_R)
+                    P = np.concatenate((P_L, P_R), axis=1)
+
+                    d_L = pick_harmonics(profile_fft_L)
+                    d_R = pick_harmonics(profile_fft_R)
+                    d = np.concatenate((d_L, d_R))
+
                     N = linalg.inv(np.dot(P, P.T))
                     this_pars_fit = np.dot(N, np.sum(P * d, 1))
                 else:
@@ -249,7 +267,8 @@ def phase_fitting(profiles, V):
                         )
                 chi2_samples.append(chi2_sample)
             phase_diff_samples = np.array(phase_diff_samples)
-            chi2_samples = np.array(chi2_samples)
+            chi2_samples = np.array(chi2_samples, dtype=np.float64)
+#            print 'chi2_samples', chi2_samples
 
             if False:
                 #Plot of chi-squared (ln likelihood) function.
@@ -283,7 +302,10 @@ def stack(profile, profile_stack):
 
 
 def residuals(parameters, profile_fft, V_fft):
-    return pick_harmonics(profile_fft) - model(parameters, V_fft)
+    res_L = pick_harmonics(profile_fft[0]) - model(parameters, V_fft[:,0,:]) 
+    res_R = pick_harmonics(profile_fft[1]) - model(parameters, V_fft[:,1,:])
+    res_all = np.concatenate((res_L, res_R))
+    return res_all
 
 
 def model(parameters, V_fft):
@@ -453,7 +475,7 @@ def plot_rebin_ut(xmin, xmax):
     plot_name_U = plot_name + '_' + str(xmin) + '_' + str(xmax) + '_rebin_ut.png'
     plt.savefig(plot_name_U, bbox_inches='tight')
     
-def plot_phase_fft(data_fft, model_fft, ii):
+def plot_phase_fft(data_fft, model_fft, ii, plot_name):
 
     freq = np.fft.fftfreq(len(data_fft))   
     '''Real part'''
@@ -470,7 +492,7 @@ def plot_phase_fft(data_fft, model_fft, ii):
     freq_min = np.amin(freq_range)
     freq_max = np.amax(freq_range)
 
-    plot_name = 'phase_fit_'
+#    plot_name = 'phase_fit_'
     plot_name += str(ii) + '_'
     fontsize = 16
     markersize = 4
@@ -508,7 +530,7 @@ def plot_phase_fft(data_fft, model_fft, ii):
       
     plt.savefig(plot_name + 'fft.png', bbox_inches='tight')
 
-def plot_phase_ifft(pars_fit, data, V_fft, ii):
+def plot_phase_ifft(pars_fit, data, V_fft, ii, plot_name):
 
     '''Plot for real part in real space'''
     fit_model = 0
@@ -520,7 +542,7 @@ def plot_phase_ifft(pars_fit, data, V_fft, ii):
     data_ifft = data
     res_ifft = data_ifft - model_ifft
 
-    plot_name = 'phase_fit_'
+#    plot_name = 'phase_fit_'
     plot_name += str(ii) + '_'
     fontsize = 16
     markersize = 4
