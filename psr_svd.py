@@ -12,7 +12,7 @@ from scipy import fftpack, optimize, interpolate, linalg, integrate
 import copy
 
 NHARMONIC = 640 
-NMODES = 3
+NMODES = 4
 
 NPHASEBIN = 512
 NCENTRALBINS = 512
@@ -54,34 +54,38 @@ def main():
     if True: 
         '''Reconstruct V modes'''
         profile = B_data_stack
-        var_profile_L = np.var(profile[:, 0:profile.shape[1]/2])
-        var_profile_R = np.var(profile[:, profile.shape[1]/2:profile.shape[1]])
 
+        # remove signal modes, and reconstruct noise profiles.
         U, s, V = svd(profile)
         V0_raw = copy.deepcopy(V[0])
         V1_raw = copy.deepcopy(V[1])
         V[0] = 0
         V[1] = 0
+        noise_profiles = reconstruct_profile(U,s,V)
+        print 'noise_profiles.shape', noise_profiles.shape
 
-        profile_recon = reconstruct_profile(U,s,V)
-        print 'profile_recon.shape', profile_recon.shape
-        # transform array into unit variance.
-        profile_norm_var_L = np.zeros((profile_recon.shape[0], profile_recon.shape[1]/2))
-        profile_norm_var_R = np.zeros((profile_recon.shape[0], profile_recon.shape[1]/2))
+        # get an estimate of the noise level, for each the R and L polarizations.
+        noise_var_L = np.mean(np.var(noise_profiles[:, 0:noise_profiles.shape[1]/2],axis=1))
+        noise_var_R = np.mean(np.var(noise_profiles[:, noise_profiles.shape[1]/2:noise_profiles.shape[1]],axis=1))
 
-        for ii in xrange(profile_recon.shape[0]):
-            profile_norm_var_L[ii] = norm_variace_profile(profile_recon[ii, 0:profile_recon.shape[1]/2], var_profile_L)
-            profile_norm_var_R[ii] = norm_variace_profile(profile_recon[ii, profile_recon.shape[1]/2:profile_recon.shape[1]], var_profile_R)
+        # transform origin profiles with unit variance.
+        profile_norm_var_L = np.zeros((profile.shape[0], profile.shape[1]/2))
+        profile_norm_var_R = np.zeros((profile.shape[0], profile.shape[1]/2))
+
+        for ii in xrange(profile.shape[0]):
+            profile_norm_var_L[ii] = norm_variace_profile(profile[ii, 0:profile.shape[1]/2], noise_var_L)
+            profile_norm_var_R[ii] = norm_variace_profile(profile[ii, profile.shape[1]/2:profile.shape[1]], noise_var_R)
         profile_norm_var = np.concatenate((profile_norm_var_L, profile_norm_var_R), axis=1)
         print 'finish profile_norm_var'
         # SVD on the normalized variance profile.
         U, s, V = svd(profile_norm_var)
+        plot_svd(profile_norm_var, 'profile_norm_var')
         print 'finish SVD'
-        check_noise(profile_norm_var)
-        V_recon = reconstruct_V(V, V0_raw, V1_raw)       
+        check_noise(profile_norm_var)      
 
         '''reshape profiles of L and R into periodic signals (pulse number, L/R, phases)'''
         profile = profile.reshape(profile.shape[0], 2, profile.shape[1]/2)        
+        V_recon = V.reshape(V.shape[0], 2, V.shape[1]/2)
 
         phase_fitting(profile, V_recon)
 
@@ -182,11 +186,11 @@ def phase_fitting(profiles, V):
         profile_fft_L = fftpack.fft(profile_L)
         profile_fft_R = fftpack.fft(profile_R)
 
-        phase_init = 0
+        phase_init = 0.
         phase_model.append(phase_init)
         amp_init = np.sqrt(np.sum(profile**2))
-        pars_init = [phase_init, amp_init] + [0.] * (NMODES - 1)
-#        pars_init = [phase_init, amp_init, amp_init/10.]
+#        pars_init = [phase_init, amp_init] + [0.] * (NMODES - 1)
+        pars_init = [phase_init, amp_init, amp_init/50, amp_init/1000, amp_init/100000]
         pars_fit, cov, infodict, mesg, ier = optimize.leastsq(
                 residuals,
                 pars_init,
