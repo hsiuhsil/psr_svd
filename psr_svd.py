@@ -12,13 +12,13 @@ from scipy import fftpack, optimize, interpolate, linalg, integrate
 import copy
 
 NHARMONIC = 640 
-NMODES = 4
+NMODES = 2
 
 NPHASEBIN = 512
 NCENTRALBINS = 512
 NCENTRALBINSMAIN = 512
 
-#plot_name = 'U_fit_'
+chi2_samples_const = 1000
 
 def main():    
 
@@ -134,11 +134,17 @@ def norm_variace_profile(profile, variance):
 
 def check_noise(profile):
 
+    # remove the signal modes, and check the noise modes only.
+    U, s, V = svd(profile)
+    V[0] = 0
+    V[1] = 0
+    noise_profiles = reconstruct_profile(U,s,V)
+
     var_L = np.zeros((profile.shape[0]))
     var_R = np.zeros((profile.shape[0]))
     for ii in xrange(profile.shape[0]):
-        var_L[ii] = np.var(profile[ii, 0:profile.shape[1]/2])
-        var_R[ii] = np.var(profile[ii, profile.shape[1]/2:profile.shape[1]])
+        var_L[ii] = np.var(noise_profiles[ii, 0:profile.shape[1]/2])
+        var_R[ii] = np.var(noise_profiles[ii, profile.shape[1]/2:profile.shape[1]])
 
     rebin_factor = 100
     rebin_var_L = rebin_array(var_L, rebin_factor)
@@ -168,10 +174,9 @@ def phase_fitting(profiles, V):
     phases_lik = []
     phase_errors_lik = []
 
-#    profiles = B_data_rebin
     nprof = len(profiles)
     profiles = profiles[:nprof]
-#    profiles = np.mean(profiles, 1)
+
     V_fft = fftpack.fft(V, axis=1)
     V_fft_L = fftpack.fft(V[:,0,:], axis=1)
     V_fft_R = fftpack.fft(V[:,1,:], axis=1)
@@ -186,11 +191,11 @@ def phase_fitting(profiles, V):
         profile_fft_L = fftpack.fft(profile_L)
         profile_fft_R = fftpack.fft(profile_R)
 
-        phase_init = 0.
+        phase_init = 3.
         phase_model.append(phase_init)
         amp_init = np.sqrt(np.sum(profile**2))
 #        pars_init = [phase_init, amp_init] + [0.] * (NMODES - 1)
-        pars_init = [phase_init, amp_init, amp_init/50, amp_init/1000, amp_init/100000]
+        pars_init = [phase_init, amp_init, amp_init/10000]
         pars_fit, cov, infodict, mesg, ier = optimize.leastsq(
                 residuals,
                 pars_init,
@@ -272,6 +277,7 @@ def phase_fitting(profiles, V):
                 chi2_samples.append(chi2_sample)
             phase_diff_samples = np.array(phase_diff_samples)
             chi2_samples = np.array(chi2_samples, dtype=np.float64)
+            chi2_samples -= chi2_samples_const # since chi2_samples are too large
 #            print 'chi2_samples', chi2_samples
 
             if False:
@@ -284,8 +290,9 @@ def phase_fitting(profiles, V):
             # Integrate the full liklihood, taking first and second moments to
             # get mean phase and variance.
             likelihood = np.exp(-chi2_samples / 2)
-            norm = integrate.simps(likelihood)
+            norm = integrate.simps(likelihood) #* np.exp(-chi2_samples_const / 2)
             print 'norm', norm
+            print 'Note: norm does not include exp('+str(-chi2_samples_const / 2)+')'
             mean = integrate.simps(phase_diff_samples * likelihood) / norm
             print 'mean', mean
             var = integrate.simps(phase_diff_samples**2 * likelihood) / norm - mean**2
