@@ -177,7 +177,7 @@ def phase_fitting(profiles, V):
     nprof = len(profiles)
     profiles = profiles[:nprof]
 
-    V_fft = fftpack.fft(V, axis=1)
+    V_fft = fftpack.fft(V, axis=2)
     V_fft_L = fftpack.fft(V[:,0,:], axis=1)
     V_fft_R = fftpack.fft(V[:,1,:], axis=1)
 
@@ -191,7 +191,7 @@ def phase_fitting(profiles, V):
         profile_fft_L = fftpack.fft(profile_L)
         profile_fft_R = fftpack.fft(profile_R)
 
-        phase_init = 3.
+        phase_init = 0.
         phase_model.append(phase_init)
         amp_init = np.sqrt(np.sum(profile**2))
 #        pars_init = [phase_init, amp_init] + [0.] * (NMODES - 1)
