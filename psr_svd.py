@@ -51,7 +51,7 @@ def main():
 #        svd(B_data_rebin, rebin_pulse)
         plot_svd(B_data_rebin, rebin_pulse, filename)
 
-    if True: 
+    if False: 
         '''Reconstruct V modes'''
         profile = B_data_stack
 
@@ -88,6 +88,31 @@ def main():
         V_recon = V.reshape(V.shape[0], 2, V.shape[1]/2)
 
         phase_fitting(profile, V_recon)
+
+    if True:
+        npy_lik_file = np.load('phase_amp_bin_lik.npy')
+        plot_phase_lik(npy_lik_file)
+
+
+def plot_phase_lik(npy_lik_file):
+
+    profile_numbers = np.linspace(0, len(npy_lik_file), num=len(npy_lik_file), endpoint=False)
+    zeros_line = np.zeros(len(npy_lik_file))
+    phase_bins = npy_lik_file[:,0]
+    phase_bin_errs = npy_lik_file[:,npy_lik_file.shape[1]/2] 
+
+    markersize = 2.0
+    fontsize = 16
+
+    plt.close('all')
+    plt.plot(profile_numbers, zeros_line, 'r--')
+    plt.plot(profile_numbers, phase_bins, 'bo', markersize=markersize)
+    plt.errorbar(profile_numbers, phase_bins, yerr= phase_bin_errs, fmt='none', ecolor='b')
+    plt.xlabel('Profile numbers', fontsize=fontsize)
+    plt.ylabel('Fitting phase bins', fontsize=fontsize)
+    plt.tick_params(axis='both', which='major', labelsize=fontsize)
+    plt.savefig('phase_lik.png', bbox_inches='tight')
+
 
 
 def reconstruct_V(V, V0_raw, V1_raw):
@@ -181,7 +206,7 @@ def phase_fitting(profiles, V):
     V_fft_L = fftpack.fft(V[:,0,:], axis=1)
     V_fft_R = fftpack.fft(V[:,1,:], axis=1)
 
-    for ii, profile in list(enumerate(profiles))[1:2]:
+    for ii, profile in list(enumerate(profiles)):
         print "Profile: ", ii
         profile_numbers.append(ii)
         profile_L = profile[0]
@@ -303,6 +328,18 @@ def phase_fitting(profiles, V):
             phase_errors_lik.append(std)
             profile_numbers_lik.append(ii)
             plot_phase_diff_chi2(phase_diff_samples, likelihood, norm, ii)
+
+            '''save the fitting amp and bin as [bin, amps, bin_err, amp_errs]'''
+            npy_lik_file = 'phase_amp_bin_lik.npy'
+            phase_amp_bin_lik = np.concatenate(([pars_init[0] + mean], pars_fit[1:], [std], errs[1:]))
+
+            if False:
+                if os.path.exists(npy_lik_file):
+                    sequence = np.load(npy_lik_file)
+                    np.save(npy_lik_file, np.vstack((sequence, phase_amp_bin_lik)))
+                else:
+                    np.save(npy_lik_file, phase_amp_bin_lik)
+
 
 def stack(profile, profile_stack):
     nprof = len(profile)
